@@ -529,8 +529,9 @@ router.post('/transactions', async (req, res) => {
       }
     }
 
-    // Calculate reward points (1 point per ₹100, rounded down)
-    const rewardPoints = Math.floor(amount / 100);
+    // Calculate reward points based on liters
+    const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
+    const rewardPoints = await calculateRewardPoints(liters);
 
     // Create transaction
     const transaction = new Transaction({
@@ -654,8 +655,9 @@ router.get('/reward-points', async (req, res) => {
     });
 
     // Update transactions without rewardPoints
+    const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
     for (const transaction of transactionsToUpdate) {
-      const calculatedPoints = Math.floor((transaction.amount || 0) / 100);
+      const calculatedPoints = await calculateRewardPoints(transaction.liters);
       transaction.rewardPoints = calculatedPoints;
       await transaction.save();
     }
@@ -889,18 +891,19 @@ router.get('/users', async (req, res) => {
           userId: user._id,
           employerId,
           status: 'Completed',
-        }).select('rewardPoints amount');
+        }).select('rewardPoints amount liters');
 
         // Calculate reward points from transactions (more accurate)
+        const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
         let calculatedPoints = 0;
-        transactions.forEach(transaction => {
+        for (const transaction of transactions) {
           if (transaction.rewardPoints !== undefined && transaction.rewardPoints !== null) {
             calculatedPoints += transaction.rewardPoints;
-          } else if (transaction.amount) {
-            // Fallback: calculate from amount if rewardPoints not set
-            calculatedPoints += Math.floor(transaction.amount / 100);
+          } else {
+            // Fallback: calculate from liters/amount if rewardPoints not set
+            calculatedPoints += await calculateRewardPoints(transaction.liters);
           }
-        });
+        }
 
         const transactionCount = transactions.length;
 

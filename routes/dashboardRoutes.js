@@ -258,10 +258,11 @@ router.get('/supervisor/dashboard/stats', async (req, res) => {
               employerId: { $in: employerIds },
               userId: { $in: allUsers.map(u => u._id) },
               status: 'Completed'
-            }).select('userId rewardPoints amount');
+            }).select('userId rewardPoints amount liters');
 
             // Calculate points and transaction counts from actual transactions
-            userTransactions.forEach(transaction => {
+            const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
+            for (const transaction of userTransactions) {
               const userIdStr = transaction.userId?.toString();
               if (userIdStr) {
                 // Count transactions
@@ -271,13 +272,13 @@ router.get('/supervisor/dashboard/stats', async (req, res) => {
                 let points = 0;
                 if (transaction.rewardPoints !== undefined && transaction.rewardPoints !== null) {
                   points = transaction.rewardPoints;
-                } else if (transaction.amount) {
-                  // Fallback: calculate from amount if rewardPoints not set
-                  points = Math.floor(transaction.amount / 100);
+                } else {
+                  // Fallback: calculate from liters/amount if rewardPoints not set
+                  points = await calculateRewardPoints(transaction.liters);
                 }
                 userPointsMap[userIdStr] = (userPointsMap[userIdStr] || 0) + points;
               }
-            });
+            }
           }
           
           // Combine user data with points and transaction counts
@@ -474,9 +475,10 @@ router.get('/user/reward-points-details', async (req, res) => {
       .sort({ createdAt: -1 });
     
     // Update transactions that don't have rewardPoints set (backfill for old transactions)
+    const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
     const transactionsToUpdate = transactions.filter(t => !t.rewardPoints && t.rewardPoints !== 0);
     for (const transaction of transactionsToUpdate) {
-      const calculatedPoints = Math.floor((transaction.amount || 0) / 100);
+      const calculatedPoints = await calculateRewardPoints(transaction.liters);
       transaction.rewardPoints = calculatedPoints;
       await transaction.save();
     }

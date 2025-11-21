@@ -1,12 +1,26 @@
 // Reward points calculation utilities
 
 /**
- * Calculate reward points from transaction amount
- * @param {Number} amount - Transaction amount
- * @returns {Number} - Reward points (1 point per ₹100, rounded down)
+ * Calculate reward points from transaction liters
+ * @param {Number} liters - Transaction liters
+ * @param {Object} settings - Settings object with rewardMultiplier, pointsPerLiter
+ * @returns {Number} - Reward points
  */
-export const calculateRewardPoints = (amount) => {
-  return Math.floor(amount / 100);
+export const calculateRewardPoints = async (liters = null, settings = null) => {
+  // If settings not provided, fetch from database
+  if (!settings) {
+    const Settings = (await import('../models/Settings.js')).default;
+    settings = await Settings.getSettings();
+  }
+
+  const { rewardMultiplier, pointsPerLiter } = settings;
+
+  // Liter-based calculation: points = liters * pointsPerLiter * multiplier
+  if (liters !== null && liters !== undefined && liters > 0) {
+    return Math.floor(liters * (pointsPerLiter || 1) * (rewardMultiplier || 1));
+  }
+
+  return 0;
 };
 
 /**
@@ -19,8 +33,6 @@ export const calculateTotalRewardPoints = (transactions) => {
   transactions.forEach(transaction => {
     if (transaction.rewardPoints !== undefined && transaction.rewardPoints !== null) {
       totalPoints += transaction.rewardPoints;
-    } else if (transaction.amount) {
-      totalPoints += calculateRewardPoints(transaction.amount);
     }
   });
   return totalPoints;

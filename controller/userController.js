@@ -33,7 +33,7 @@ export const getUsers = asyncHandler(async (req, res) => {
         const transactions = await Transaction.find({
           userId: user._id,
           status: 'Completed',
-        }).select('rewardPoints amount');
+        }).select('rewardPoints amount liters');
 
         const calculatedPoints = calculateTotalRewardPoints(transactions);
 

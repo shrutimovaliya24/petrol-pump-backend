@@ -345,20 +345,63 @@ router.get('/customer-tiers', async (req, res) => {
   }
 });
 
+// Get settings
+router.get('/settings', async (req, res) => {
+  try {
+    const Settings = (await import('../models/Settings.js')).default;
+    const settings = await Settings.getSettings();
+    res.json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching settings',
+    });
+  }
+});
+
 // Save settings
 router.post('/settings', async (req, res) => {
   try {
-    // In a real app, you'd save this to a Settings model
-    // For now, just return success
+    const Settings = (await import('../models/Settings.js')).default;
+    let settings = await Settings.findOne();
+    
+    // Only include fields that exist in the schema
+    const allowedFields = [
+      'stationName', 'address', 'phone', 'email',
+      'petrolPrice', 'dieselPrice', 'lpgPrice', 'cngPrice',
+      'rewardMultiplier', 'pointsPerLiter'
+    ];
+    
+    const settingsData = {};
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        settingsData[field] = req.body[field];
+      }
+    });
+    
+    if (!settings) {
+      settings = new Settings(settingsData);
+    } else {
+      Object.assign(settings, settingsData);
+    }
+    
+    await settings.save();
+    
     res.json({
       success: true,
       message: 'Settings saved successfully',
+      data: settings,
     });
   } catch (error) {
     console.error('Error saving settings:', error);
     res.status(500).json({
       success: false,
       message: 'Error saving settings',
+      error: error.message,
     });
   }
 });
@@ -570,7 +613,7 @@ router.post('/backfill-customer-tiers', async (req, res) => {
     const transactions = await Transaction.find({
       userId: { $ne: null },
       status: 'Completed',
-    }).select('userId rewardPoints amount');
+    }).select('userId rewardPoints amount liters');
 
     console.log(`Found ${transactions.length} transactions with userId`);
 
@@ -599,14 +642,15 @@ router.post('/backfill-customer-tiers', async (req, res) => {
         let totalPoints = 0;
         let transactionCount = 0;
 
-        userTransactions.forEach(transaction => {
+        const { calculateRewardPoints } = await import('../utils/rewardPoints.js');
+        for (const transaction of userTransactions) {
           transactionCount++;
           if (transaction.rewardPoints !== undefined && transaction.rewardPoints !== null) {
             totalPoints += transaction.rewardPoints;
-          } else if (transaction.amount) {
-            totalPoints += Math.floor(transaction.amount / 100);
+          } else {
+            totalPoints += await calculateRewardPoints(transaction.liters);
           }
-        });
+        }
 
         // Find or create CustomerTier
         const mongoose = (await import('mongoose')).default;

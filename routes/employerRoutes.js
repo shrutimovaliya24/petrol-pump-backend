@@ -450,16 +450,16 @@ router.get('/transactions', async (req, res) => {
 // Get next sequential invoice number
 router.get('/transactions/next-invoice-number', async (req, res) => {
   try {
-    // Find all transactions with invoice numbers matching pattern INV-XX
+    // Find all transactions with invoice numbers matching pattern I-XX
     const transactions = await Transaction.find({
-      invoiceNumber: { $regex: /^INV-\d+$/ }
+      invoiceNumber: { $regex: /^I-\d+$/ }
     }).select('invoiceNumber');
 
     let maxNumber = 0;
 
     // Extract numbers from all matching invoices and find the maximum
     transactions.forEach(transaction => {
-      const match = transaction.invoiceNumber.match(/^INV-(\d+)$/);
+      const match = transaction.invoiceNumber.match(/^I-(\d+)$/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (num > maxNumber) {
@@ -471,8 +471,8 @@ router.get('/transactions/next-invoice-number', async (req, res) => {
     // Next number is max + 1, starting from 1 if no invoices exist
     const nextNumber = maxNumber + 1;
 
-    // Format with leading zero (INV-01, INV-02, etc.)
-    const invoiceNumber = `INV-${String(nextNumber).padStart(2, '0')}`;
+    // Format with leading zero (I-01, I-02, etc.)
+    const invoiceNumber = `I-${String(nextNumber).padStart(2, '0')}`;
 
     res.json({
       success: true,

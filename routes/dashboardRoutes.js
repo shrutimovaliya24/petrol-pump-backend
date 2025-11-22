@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
 import Pump from '../models/Pump.js';
 import PumpAssignment from '../models/PumpAssignment.js';
+import UserAssignment from '../models/UserAssignment.js';
 
 const router = express.Router();
 
@@ -208,7 +209,7 @@ router.get('/supervisor/dashboard/stats', async (req, res) => {
       })
     );
 
-    // Get users (role='user') - only users who have transactions with supervisor's assigned employers
+    // Get users (role='user') - users assigned to supervisor's employers OR users with transactions
     let usersList = [];
     try {
       // Get unique employer IDs from assignments
@@ -223,19 +224,36 @@ router.get('/supervisor/dashboard/stats', async (req, res) => {
       if (employerIds.length === 0) {
         usersList = [];
       } else {
-        // Get all transactions from supervisor's assigned employers
+        // Step 1: Get users from UserAssignment (users assigned to supervisor's employers)
+        const userAssignments = await UserAssignment.find({
+          employerId: { $in: employerIds },
+          status: 'ACTIVE'
+        }).select('userId').populate('userId', 'email role');
+        
+        // Get unique user IDs from assignments
+        const assignedUserIds = [...new Set(
+          userAssignments
+            .map(assignment => assignment.userId?._id?.toString())
+            .filter(Boolean)
+        )];
+        
+        // Step 2: Get users from transactions (users who have made transactions)
         const transactions = await Transaction.find({
           employerId: { $in: employerIds },
           userId: { $exists: true, $ne: null },
           status: 'Completed'
         }).select('userId employerId');
         
-        // Get unique user IDs from transactions
-        const uniqueUserIds = [...new Set(transactions.map(t => t.userId?.toString()).filter(Boolean))];
+        const transactionUserIds = [...new Set(
+          transactions.map(t => t.userId?.toString()).filter(Boolean)
+        )];
         
-        if (uniqueUserIds.length > 0) {
-          // Get user details
-          const userObjectIds = uniqueUserIds.map(id => {
+        // Step 3: Merge both lists and get unique user IDs
+        const allUniqueUserIds = [...new Set([...assignedUserIds, ...transactionUserIds])];
+        
+        if (allUniqueUserIds.length > 0) {
+          // Convert to ObjectIds
+          const userObjectIds = allUniqueUserIds.map(id => {
             try {
               return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
             } catch {
@@ -243,6 +261,7 @@ router.get('/supervisor/dashboard/stats', async (req, res) => {
             }
           }).filter(Boolean);
           
+          // Get user details
           const allUsers = await User.find({
             _id: { $in: userObjectIds },
             role: 'user'
